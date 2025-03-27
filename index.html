@@ -1,0 +1,459 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Catnap As Pet</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            background-color: #f0f0f0;
+        }
+        #gameCanvas {
+            width: 100vw;
+            height: 100vh;
+            display: block;
+        }
+        #gameOverScreen, #pauseScreen, #winScreen, #preGameOverScreen {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.9);
+            display: none;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            font-family: Arial, sans-serif;
+            text-align: center;
+        }
+        #gameOverScreen, #pauseScreen { color: red; }
+        #winScreen { color: green; }
+        button {
+            font-size: 24px;
+            background: none;
+            border: none;
+            cursor: pointer;
+            margin: 20px;
+        }
+        #gameOverScreen button, #pauseScreen button { color: red; }
+        #winScreen button { color: green; }
+        #preGameOverScreen img {
+            width: 50%;
+            height: auto;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="gameCanvas"></canvas>
+    <div id="gameOverScreen">
+        <h1 style="font-size: 48px;">GAME OVER!</h1>
+        <button id="playAgain">play again</button>
+    </div>
+    <div id="pauseScreen">
+        <button id="newGame">New Game</button>
+        <button id="exitGame">Exit</button>
+    </div>
+    <div id="winScreen">
+        <h1 style="font-size: 48px;">YOU SURVIVED!</h1>
+        <button id="newGameWin">New Game</button>
+        <button id="exitGameWin">Exit</button>
+    </div>
+    <div id="preGameOverScreen">
+        <img src="https://files.catbox.moe/blmzvb.gif" alt="Pre-Game Over">
+    </div>
+
+    <audio id="bgMusic" loop src="https://files.catbox.moe/aiz7s0.mp3"></audio>
+    <audio id="dogdayMusic" loop src="https://files.catbox.moe/xl00bb.mp3"></audio>
+    <audio id="gameOverMusic" src="https://files.catbox.moe/88kd3t.mp3"></audio>
+    <audio id="preGameOverMusic" src="https://files.catbox.moe/oie9kl.mp3"></audio>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const gameOverScreen = document.getElementById('gameOverScreen');
+        const pauseScreen = document.getElementById('pauseScreen');
+        const winScreen = document.getElementById('winScreen');
+        const preGameOverScreen = document.getElementById('preGameOverScreen');
+        const playAgainBtn = document.getElementById('playAgain');
+        const newGameBtn = document.getElementById('newGame');
+        const exitGameBtn = document.getElementById('exitGame');
+        const newGameWinBtn = document.getElementById('newGameWin');
+        const exitGameWinBtn = document.getElementById('exitGameWin');
+        const bgMusic = document.getElementById('bgMusic');
+        const dogdayMusic = document.getElementById('dogdayMusic');
+        const gameOverMusic = document.getElementById('gameOverMusic');
+        const preGameOverMusic = document.getElementById('preGameOverMusic');
+
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+
+        // Load images
+        const room1 = new Image(); room1.src = 'https://media.istockphoto.com/id/1303454561/vector/set-of-pixel-art-isolated-house-bedroom.jpg?s=612x612&w=0&k=20&c=hUzXwVJZbIHJ3Itn_58CrNJQzlHsbYPwwyG_Ng9w-Nw=';
+        const cat = new Image(); cat.src = 'https://i.imgur.com/RFzkanM.png';
+        const room2 = new Image(); room2.src = 'https://i.imgur.com/81Yfnha.png';
+        const room3 = new Image(); room3.src = 'https://i.imgur.com/Cj23RPy.png';
+        const dogday = new Image(); dogday.src = 'https://i.imgur.com/Xl5kScz.png';
+        const finalBoss = new Image(); finalBoss.src = 'https://i.imgur.com/wenn6Ik.png';
+        const gameOverImg = new Image(); gameOverImg.src = 'https://static.wikia.nocookie.net/d4ad6701-ba83-494d-9cd8-835abd9b2f9a/scale-to-width/370';
+        const energyItem = new Image(); energyItem.src = 'https://i.imgur.com/KawBSAj.png';
+
+        let imagesLoaded = 0;
+        const totalImages = 8;
+        function checkAllLoaded() {
+            imagesLoaded++;
+            if (imagesLoaded === totalImages) {
+                drawScene();
+                animate();
+            } else {
+                ctx.fillStyle = 'gray';
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+            }
+        }
+        room1.onload = checkAllLoaded; cat.onload = checkAllLoaded; room2.onload = checkAllLoaded;
+        room3.onload = checkAllLoaded; dogday.onload = checkAllLoaded; finalBoss.onload = checkAllLoaded;
+        gameOverImg.onload = checkAllLoaded; energyItem.onload = checkAllLoaded;
+
+        room1.onerror = () => console.error("Failed to load room1");
+        cat.onerror = () => console.error("Failed to load cat");
+        room2.onerror = () => console.error("Failed to load room2");
+        room3.onerror = () => console.error("Failed to load room3");
+        dogday.onerror = () => console.error("Failed to load dogday");
+        finalBoss.onerror = () => console.error("Failed to load finalBoss");
+        gameOverImg.onerror = () => console.error("Failed to load gameOverImg");
+        energyItem.onerror = () => console.error("Failed to load energyItem");
+
+        // Game state
+        let currentRoom = 1;
+        let day = 0;
+        let energy = 150;
+        let lastRoom3Visit = Date.now();
+        let dogdayPresent = false;
+        let finalBossPresent = false;
+        let entityLocation = 0; // 0 = room3, 1 = room1, 2 = room2
+        let lastEntityDay = 0;
+        let finalBossSpawned = false;
+        const dayDuration = 90000; // 1.5 minutes
+        let catOffsetY = 0, catDirection = 1, catSwaySpeed = 0.05;
+        let isPaused = false;
+        let dayInterval;
+        let edgeTriggered = false;
+        let energyItemPresent = false;
+        let lastEnergyItemDay = -5;
+        let canMove = true;
+
+        // Load/save progress
+        function loadProgress() {
+            const saved = localStorage.getItem('gameProgress');
+            if (saved) {
+                const data = JSON.parse(saved);
+                day = data.day;
+                energy = data.energy;
+                dogdayPresent = data.dogdayPresent;
+                entityLocation = data.entityLocation;
+                lastEnergyItemDay = data.lastEnergyItemDay || -5;
+                lastEntityDay = data.lastEntityDay || 0;
+                finalBossSpawned = data.finalBossSpawned || false;
+            }
+        }
+        function saveProgress() {
+            localStorage.setItem('gameProgress', JSON.stringify({ 
+                day, energy, dogdayPresent, entityLocation, lastEnergyItemDay, lastEntityDay, finalBossSpawned 
+            }));
+        }
+        loadProgress();
+
+        // Day counter and entity spawn
+        function startDayCounter() {
+            dayInterval = setInterval(() => {
+                if (!isPaused && canMove) {
+                    day++;
+                    if (day <= 11 && day % 3 === 0 && !dogdayPresent && !finalBossPresent) {
+                        dogdayPresent = true;
+                        entityLocation = 0;
+                        lastEntityDay = day;
+                        lastRoom3Visit = Date.now();
+                        if (currentRoom === 0) {
+                            dogdayPresent = false;
+                        }
+                    }
+                    if (day === 12 && !finalBossSpawned && !dogdayPresent) {
+                        finalBossPresent = true;
+                        finalBossSpawned = true;
+                        entityLocation = 0;
+                        lastEntityDay = day;
+                        lastRoom3Visit = Date.now();
+                        if (currentRoom === 0) {
+                            finalBossPresent = false;
+                        }
+                    }
+                    if (day - lastEnergyItemDay >= 5 && Math.random() < 0.2 && currentRoom === 0) {
+                        energyItemPresent = true;
+                        lastEnergyItemDay = day;
+                    }
+                    if (day > 15 && !finalBossPresent) {
+                        isPaused = true;
+                        winScreen.style.display = 'flex';
+                    }
+                    saveProgress();
+                    drawScene();
+                }
+            }, dayDuration);
+        }
+        startDayCounter();
+
+        function drawScene() {
+            ctx.imageSmoothingEnabled = false;
+
+            if (currentRoom === 1) { // Room 1 (middle with Catnap)
+                ctx.drawImage(room1, 0, 0, canvas.width, canvas.height);
+                const catScale = Math.min(canvas.width / cat.width, canvas.height / cat.height) * 0.5;
+                const catX = (canvas.width - cat.width * catScale) / 2 - canvas.width * 0.15;
+                const catY = (canvas.height - cat.height * catScale) / 2 + canvas.height * 0.05 + catOffsetY;
+                ctx.drawImage(cat, catX, catY, cat.width * catScale, cat.height * catScale);
+
+                if ((dogdayPresent || finalBossPresent) && entityLocation === 1) {
+                    const entity = dogdayPresent ? dogday : finalBoss;
+                    const entityScale = catScale; // Same size as Catnap
+                    const entityX = catX - entity.width * entityScale; // Left of Catnap, touching
+                    const entityY = catY; // Same height as Catnap
+                    ctx.filter = 'brightness(80%)';
+                    ctx.drawImage(entity, entityX, entityY, entity.width * entityScale, entity.height * entityScale);
+                    ctx.filter = 'none';
+                    canMove = false;
+                    setTimeout(() => {
+                        if (entityLocation === 1) showPreGameOver();
+                    }, 5000);
+                }
+            } else if (currentRoom === 2) { // Room 2 (right)
+                ctx.drawImage(room2, 0, 0, canvas.width, canvas.height);
+                if ((dogdayPresent || finalBossPresent) && entityLocation === 2) {
+                    const entity = dogdayPresent ? dogday : finalBoss;
+                    const entityScale = Math.min(canvas.width / entity.width, canvas.height / entity.height) * 0.3;
+                    const entityX = canvas.width / 2 - (entity.width * entityScale) / 2;
+                    const entityY = canvas.height - entity.height * entityScale - 20;
+                    ctx.filter = 'brightness(80%)';
+                    ctx.drawImage(entity, entityX, entityY, entity.width * entityScale, entity.height * entityScale);
+                    ctx.filter = 'none';
+                }
+            } else if (currentRoom === 0) { // Room 3 (left)
+                ctx.drawImage(room3, 0, 0, canvas.width, canvas.height);
+                ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+                if ((dogdayPresent || finalBossPresent) && entityLocation === 0) {
+                    const entity = dogdayPresent ? dogday : finalBoss;
+                    const entityScale = Math.min(canvas.width / entity.width, canvas.height / entity.height) * 0.3;
+                    const entityX = canvas.width * 0.6 - (entity.width * entityScale) / 2;
+                    const entityY = canvas.height - entity.height * entityScale - 20;
+                    ctx.filter = 'brightness(80%)';
+                    ctx.drawImage(entity, entityX, entityY, entity.width * entityScale, entity.height * entityScale);
+                    ctx.filter = 'none';
+                }
+                if (energyItemPresent) {
+                    const itemScale = Math.min(canvas.width / energyItem.width, canvas.height / energyItem.height) * 0.2;
+                    const itemX = canvas.width * 0.3 - (energyItem.width * itemScale) / 2;
+                    const itemY = canvas.height - energyItem.height * itemScale - 20;
+                    ctx.drawImage(energyItem, itemX, itemY, energyItem.width * itemScale, energyItem.height * itemScale);
+                }
+                lastRoom3Visit = Date.now();
+            }
+
+            ctx.fillStyle = 'red';
+            ctx.font = '20px Arial';
+            ctx.fillText(`Day: ${day}`, 10, 30);
+            ctx.fillText(`Energy: ${energy}%`, 10, 60);
+        }
+
+        function animate() {
+            if (!isPaused && canMove) {
+                if (currentRoom === 1) {
+                    catOffsetY += catDirection * catSwaySpeed;
+                    if (Math.abs(catOffsetY) > 5) catDirection *= -1;
+                }
+                checkEntityMovement();
+            }
+            drawScene();
+            requestAnimationFrame(animate);
+        }
+
+        function checkEntityMovement() {
+            if ((dogdayPresent || finalBossPresent) && currentRoom !== entityLocation) {
+                const delay = finalBossPresent ? 5000 : 10000;
+                if (Date.now() - lastRoom3Visit > delay) {
+                    if (entityLocation === 0) {
+                        entityLocation = 2;
+                        lastRoom3Visit = Date.now();
+                        if (dogdayPresent) {
+                            bgMusic.pause();
+                            dogdayMusic.play();
+                        }
+                    } else if (entityLocation === 2 && currentRoom !== 2 && Date.now() - lastRoom3Visit > delay) {
+                        entityLocation = 1;
+                    }
+                    saveProgress();
+                }
+            } else if (currentRoom === entityLocation && (dogdayPresent || finalBossPresent)) {
+                let previousRoom = currentRoom;
+                canvas.addEventListener('mousemove', function checkDisappear() {
+                    if (currentRoom !== previousRoom) {
+                        if (dogdayPresent) dogdayPresent = false;
+                        if (finalBossPresent) finalBossPresent = false;
+                        dogdayMusic.pause();
+                        bgMusic.play();
+                        canvas.removeEventListener('mousemove', checkDisappear);
+                    }
+                });
+            }
+        }
+
+        function showPreGameOver() {
+            bgMusic.pause();
+            dogdayMusic.pause();
+            preGameOverScreen.style.display = 'flex';
+            preGameOverMusic.volume = 1.0; // Max volume for louder effect
+            preGameOverMusic.play();
+            setTimeout(() => {
+                preGameOverScreen.style.display = 'none';
+                preGameOverMusic.pause();
+                preGameOverMusic.currentTime = 0; // Reset audio
+                showGameOver();
+            }, 3000);
+        }
+
+        function showGameOver() {
+            gameOverMusic.volume = 1.0;
+            gameOverMusic.play();
+            gameOverScreen.style.display = 'flex';
+            ctx.drawImage(gameOverImg, (canvas.width - gameOverImg.width) / 2, (canvas.height - gameOverImg.height) / 2);
+        }
+
+        playAgainBtn.addEventListener('click', () => {
+            gameOverScreen.style.display = 'none';
+            gameOverMusic.pause();
+            resetGame();
+            bgMusic.play();
+        });
+
+        newGameBtn.addEventListener('click', () => {
+            pauseScreen.style.display = 'none';
+            resetGame();
+            bgMusic.play();
+        });
+
+        exitGameBtn.addEventListener('click', () => {
+            window.close();
+        });
+
+        newGameWinBtn.addEventListener('click', () => {
+            winScreen.style.display = 'none';
+            resetGame();
+            bgMusic.play();
+        });
+
+        exitGameWinBtn.addEventListener('click', () => {
+            window.close();
+        });
+
+        function resetGame() {
+            day = 0;
+            energy = 150;
+            dogdayPresent = false;
+            finalBossPresent = false;
+            entityLocation = 0;
+            lastEntityDay = 0;
+            finalBossSpawned = false;
+            lastRoom3Visit = Date.now();
+            energyItemPresent = false;
+            lastEnergyItemDay = -5;
+            isPaused = false;
+            canMove = true;
+            saveProgress();
+            drawScene();
+        }
+
+        document.addEventListener('keydown', (event) => {
+            if (event.key === 'Escape' && canMove) {
+                isPaused = !isPaused;
+                pauseScreen.style.display = isPaused ? 'flex' : 'none';
+                if (isPaused) {
+                    bgMusic.pause();
+                    dogdayMusic.pause();
+                } else {
+                    if (dogdayPresent && entityLocation === 2) dogdayMusic.play();
+                    else if (!bgMusic.playing) bgMusic.play();
+                }
+            }
+        });
+
+        canvas.addEventListener('mousemove', (event) => {
+            if (energy <= 0 || isPaused || !canMove) return;
+
+            const mouseX = event.clientX;
+            const triggerZone = 10;
+
+            if (mouseX <= triggerZone && !edgeTriggered) { // Left edge
+                if (currentRoom === 1) {
+                    currentRoom = 0;
+                    energy -= 10;
+                    if (dogdayPresent && entityLocation === 2 && !dogdayMusic.playing) dogdayMusic.play();
+                    else if (!dogdayPresent && !finalBossPresent && !bgMusic.playing) bgMusic.play();
+                    edgeTriggered = true;
+                } else if (currentRoom === 2) {
+                    currentRoom = 1;
+                    energy -= 10;
+                    if (dogdayPresent && entityLocation === 2 && !dogdayMusic.playing) dogdayMusic.play();
+                    else if (!dogdayPresent && !finalBossPresent && !bgMusic.playing) bgMusic.play();
+                    edgeTriggered = true;
+                }
+            } else if (mouseX >= canvas.width - triggerZone && !edgeTriggered) { // Right edge
+                if (currentRoom === 1) {
+                    currentRoom = 2;
+                    energy -= 10;
+                    if (dogdayPresent && entityLocation === 2 && !dogdayMusic.playing) dogdayMusic.play();
+                    else if (!dogdayPresent && !finalBossPresent && !bgMusic.playing) bgMusic.play();
+                    edgeTriggered = true;
+                } else if (currentRoom === 0) {
+                    currentRoom = 1;
+                    energy -= 10;
+                    if (dogdayPresent && entityLocation === 2 && !dogdayMusic.playing) dogdayMusic.play();
+                    else if (!dogdayPresent && !finalBossPresent && !bgMusic.playing) bgMusic.play();
+                    edgeTriggered = true;
+                }
+            } else if (mouseX > triggerZone && mouseX < canvas.width - triggerZone) {
+                edgeTriggered = false;
+            }
+
+            saveProgress();
+            drawScene();
+        });
+
+        canvas.addEventListener('click', (event) => {
+            if (energyItemPresent && currentRoom === 0) {
+                const itemScale = Math.min(canvas.width / energyItem.width, canvas.height / energyItem.height) * 0.2;
+                const itemX = canvas.width * 0.3 - (energyItem.width * itemScale) / 2;
+                const itemY = canvas.height - energyItem.height * itemScale - 20;
+                const itemWidth = energyItem.width * itemScale;
+                const itemHeight = energyItem.height * itemScale;
+
+                if (event.clientX >= itemX && event.clientX <= itemX + itemWidth &&
+                    event.clientY >= itemY && event.clientY <= itemY + itemHeight) {
+                    energy += 60;
+                    energyItemPresent = false;
+                    saveProgress();
+                    drawScene();
+                }
+            }
+            if (!bgMusic.playing && !dogdayMusic.playing && !gameOverMusic.playing && !preGameOverMusic.playing) bgMusic.play();
+        });
+
+        window.addEventListener('resize', () => {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+            drawScene();
+        });
+    </script>
+</body>
+</html>
